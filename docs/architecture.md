@@ -1,6 +1,6 @@
 # Architecture
 
-## Implemented Now: Phases 1, 2, and 3
+## Implemented Now: Phases 1-5
 
 - `core.config.Settings` owns typed application settings. Environment variables prefixed with `SUPPORT_ASSISTANT_` override development defaults; a local `.env` is read through `pydantic-settings`.
 - `main.create_app()` is the application factory. It receives settings and an optional LLM provider, configures logging, mounts routers, and registers API exception handlers. No model is created at import time.
@@ -20,32 +20,36 @@
 - `FAISSVectorIndex` builds a reusable `IndexFlatIP` over L2-normalized vectors. Its returned score is cosine similarity (in [-1, 1]), not a probability. Index order is explicitly mapped to sorted FAQ IDs and tied scores are then ordered by FAQ ID.
 - Document embeddings can be cached as local `.npz` arrays keyed by the model identifier and ordered FAQ IDs/content. Query embeddings are not cached. Model loading, document/index build, and per-query search timing are separate; vector per-query latency includes query embedding plus index search.
 - The retriever-agnostic evaluator computes Recall@1/3/5, MRR, configurable Hit Rate@K, mean/p50/p95 query latency, and query-ID-only miss/confusion diagnostics. Recall@K is the fraction of all relevant FAQs retrieved within K, averaged across valid queries. MRR uses the first relevant rank. Invalid dataset rows and out-of-corpus relevance IDs are reported, not silently counted as misses.
+- `ReciprocalRankFusion` combines generic ranked candidate lists using `sum(1 / (rrf_k + rank))`; it never adds BM25 and cosine score values. Duplicate FAQs contribute once per input ranking and become a single fused candidate. Ties use FAQ ID order. BM25/vector failures propagate explicitly; hybrid does not silently degrade.
+- `HybridRetriever` independently runs BM25Plus and vector search with separately configurable top-K values, then returns the bounded configurable RRF pool. Source rank metadata identifies the lexical and vector ranks.
+- `CrossEncoderReranker` loads `cross-encoder/ms-marco-MiniLM-L6-v2` only when constructed and reuses that model. It scores `(query, question + answer)` pairs only for hybrid candidates, then orders solely by its own score. RRF score and source ranks remain metadata; scores are ranking values, not confidence or probabilities.
+- `CrossEncoderRerankingRetriever` limits reranking to the configured hybrid candidate pool and returns the configured final top-K. Evaluation reports total per-query latency separately from reranker-only mean/p50/p95 and model-load time.
 
 ## Planned Later
 
-The intended future retrieval flow is:
+The current retrieval flow and future generation flow are:
 
 ```mermaid
 flowchart LR
-	Q[Query] --> L[Lexical retriever]
+	Q[Query] --> L[BM25 retriever]
 	Q --> E[Embedding provider]
 	E --> V[Vector retriever]
-	L --> F[Rank fusion]
+	L --> F[RRF rank fusion]
 	V --> F
-	F --> R[Reranker]
+	F --> R[Cross-encoder reranker]
 	R --> G[Grounded generation]
 	G --> O[Response]
 ```
 
-The Phase 3 independent baselines feed separate evaluation runs. RRF, reranking, evidence selection, generation, confidence, and abstention remain future work. No retrieval HTTP endpoint has been added.
+RRF and cross-encoder reranking are implemented and benchmarked independently alongside the preserved Phase 3 baselines. Evidence policy, LLM generation, confidence, and abstention remain future work. No retrieval HTTP endpoint has been added.
 
 ## Swappable Components
 
 - `generation.providers.LLMProvider` returns a typed `GenerationResult`; local Ollama, hosted providers, and other models can implement the same async `generate` contract.
 - `retrieval.embeddings.EmbeddingProvider` separates document and query embedding operations from any concrete embedding model.
 - `retrieval.bm25_search.LexicalRetriever` and `retrieval.vector_search.VectorRetriever` return common `RetrievalCandidate` values. The semantic text adapter owns query embedding while the FAISS index accepts vectors, keeping model selection separate from index storage.
-- `retrieval.reranker.Reranker` reorders common candidates without depending on a particular reranking model.
-- `Settings` centralizes provider, model, and top-K selections. Phase 1 uses `not-configured` placeholders and does not choose or load models.
+- `retrieval.reranker.Reranker` receives the query, a bounded candidate sequence, and a FAQ-ID-to-document mapping; it has no database or HTTP dependency.
+- `Settings` centralizes provider, model, top-K, and RRF rank-constant selections. Baseline model settings can be replaced without changing fusion, evaluation, or business logic.
 
 Implementations can therefore change through configuration and dependency injection without changing evaluation logic or route handlers. Contracts are intentionally narrow.
 
@@ -63,4 +67,12 @@ Latency measures each retriever call. BM25 includes tokenization and search. Vec
 
 `BM25Plus` is used because standard Okapi negative IDF can invert ranking for small FAQ corpora. The initial semantic baseline is `sentence-transformers/all-MiniLM-L6-v2`, chosen for practical local CPU evaluation and reproducibility only. Its 384-dimensional embedding and FAISS inner-product index over normalized vectors yield cosine similarity. Neither score type is a probability, and lexical scores are never compared numerically to cosine scores.
 
-No RRF, reranker, LLM, confidence, automatic abstention, frontend, or production vector database is implemented in Phase 3.
+## Phases 4-5 Retrieval Policy
+
+RRF starts at `rrf_k=60`, a conventional rank-smoothing baseline, and sums rank contributions only. The initial candidate settings are BM25 20, vector 20, fused pool 20, final reranked top 5; these are configurable baselines, not tuned optima. The RRF pool is bounded before the cross-encoder to control inference work.
+
+The cross-encoder baseline is `cross-encoder/ms-marco-MiniLM-L6-v2`, selected as a practical local CPU starting point, not a final reranker recommendation. Its score replaces RRF ordering for final candidates; the two score scales are not combined. Model load, embedding/index build, end-to-end query latency, and reranker-only latency are distinct measurements.
+
+The benchmark supports `bm25`, `vector`, `hybrid`, and `hybrid-reranker`. Current sample metrics are based on five synthetic queries and cannot establish production performance or justify model selection. The normal unit suite injects a mock cross-encoder and does not download model weights.
+
+No LLM generation, confidence estimation, knowledge-gap detection, automatic abstention, public retrieval API, or automatic customer response sending is implemented.

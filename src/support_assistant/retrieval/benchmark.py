@@ -40,9 +40,11 @@ def run_benchmark(
     top_k: int,
     configuration: Mapping[str, object],
     model_name: str | None = None,
+    reranker_model_name: str | None = None,
     embedding_dimension: int | None = None,
     index_type: str | None = None,
     model_load_time_ms: float | None = None,
+    reranker_model_load_time_ms: float | None = None,
     embedding_build_time_ms: float | None = None,
     index_build_time_ms: float | None = None,
 ) -> EvaluationResult:
@@ -54,9 +56,11 @@ def run_benchmark(
         hit_rate_at_k=min(5, top_k),
         configuration=configuration,
         model_name=model_name,
+        reranker_model_name=reranker_model_name,
         embedding_dimension=embedding_dimension,
         index_type=index_type,
         model_load_time_ms=model_load_time_ms,
+        reranker_model_load_time_ms=reranker_model_load_time_ms,
         embedding_build_time_ms=embedding_build_time_ms,
         index_build_time_ms=index_build_time_ms,
     )

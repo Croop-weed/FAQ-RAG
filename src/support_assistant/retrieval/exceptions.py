@@ -12,3 +12,7 @@ class EmbeddingError(RetrievalError):
 
 class EvaluationDatasetError(RetrievalError, ValueError):
     """Raised when an evaluation dataset cannot be validated."""
+
+
+class RerankingError(RetrievalError):
+    """Raised when cross-encoder loading, input mapping, or scoring fails."""

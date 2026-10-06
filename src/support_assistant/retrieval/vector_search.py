@@ -96,7 +96,12 @@ class FAISSVectorIndex:
             key=lambda row: (-row[0], row[1]),
         )[:top_k]
         return [
-            RetrievalCandidate(document_id=faq_id, score=score, rank=rank)
+            RetrievalCandidate(
+                document_id=faq_id,
+                score=score,
+                rank=rank,
+                retrieval_stage="vector",
+            )
             for rank, (score, faq_id) in enumerate(ordered, start=1)
         ]
 

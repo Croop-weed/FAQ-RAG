@@ -74,6 +74,12 @@ class RetrievalMetrics(BaseModel):
     p95_latency_ms: float
 
 
+class LatencySummary(BaseModel):
+    mean_ms: float
+    p50_ms: float
+    p95_ms: float
+
+
 class EvaluationFailure(BaseModel):
     query_id: str
     missed_relevant_faq_ids: list[str]
@@ -88,13 +94,16 @@ class EvaluationResult(BaseModel):
     num_queries: int
     invalid_records: list[EvaluationRecordError] = Field(default_factory=list)
     metrics: RetrievalMetrics
+    reranker_latency: LatencySummary | None = None
     failures: list[EvaluationFailure] = Field(default_factory=list)
     confused_faq_counts: dict[str, int] = Field(default_factory=dict)
     configuration: dict[str, Any] = Field(default_factory=dict)
     model_name: str | None = None
+    reranker_model_name: str | None = None
     embedding_dimension: int | None = None
     index_type: str | None = None
     model_load_time_ms: float | None = None
+    reranker_model_load_time_ms: float | None = None
     embedding_build_time_ms: float | None = None
     index_build_time_ms: float | None = None
     memory_bytes: int | None = None

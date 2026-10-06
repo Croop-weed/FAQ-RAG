@@ -22,6 +22,8 @@ class RetrievalCandidate(BaseModel):
     document_id: str
     score: float
     rank: int = Field(ge=1)
+    retrieval_stage: str = "retrieval"
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def faq_id(self) -> str:
@@ -33,3 +35,8 @@ class RetrievalResult(BaseModel):
     retriever_name: str
     candidates: list[RetrievalCandidate]
     latency_ms: float = Field(ge=0)
+
+
+class RetrievalExecution(BaseModel):
+    candidates: list[RetrievalCandidate]
+    stage_latency_ms: dict[str, float] = Field(default_factory=dict)

@@ -12,8 +12,11 @@ from support_assistant.retrieval.bm25_search import BM25Retriever
 from support_assistant.retrieval.evaluator import evaluate_retriever
 from support_assistant.retrieval.exceptions import InvalidRetrievalRequest
 from support_assistant.schemas.evaluation import EvaluationDataset, EvaluationExample
-from support_assistant.schemas.retrieval import RetrievalCandidate
-from support_assistant.schemas.retrieval import RetrievalDocument
+from support_assistant.schemas.retrieval import (
+    RetrievalCandidate,
+    RetrievalDocument,
+    RetrievalExecution,
+)
 
 
 class FixedRetriever:
@@ -70,9 +73,7 @@ def test_runner_reports_metrics_failures_and_missing_relevance() -> None:
         ],
     )
 
-    result = evaluate_retriever(
-        FixedRetriever(), dataset, corpus_ids={"faq-1", "faq-2"}, top_k=5
-    )
+    result = evaluate_retriever(FixedRetriever(), dataset, corpus_ids={"faq-1", "faq-2"}, top_k=5)
 
     assert result.num_queries == 1
     assert result.metrics.recall_at_1 == pytest.approx(0.5)
@@ -138,12 +139,46 @@ def test_runner_counts_false_positive_faqs_even_when_query_has_a_hit() -> None:
         dataset_name="one.jsonl",
         examples=[
             EvaluationExample(query_id="q1", query="first query", relevant_faq_ids=["faq-1"])
-        ]
+        ],
     )
 
-    result = evaluate_retriever(
-        FixedRetriever(), dataset, corpus_ids={"faq-1", "faq-2"}, top_k=5
-    )
+    result = evaluate_retriever(FixedRetriever(), dataset, corpus_ids={"faq-1", "faq-2"}, top_k=5)
 
     assert result.failures == []
     assert result.confused_faq_counts == {"faq-2": 1}
+
+
+def test_runner_reports_reranker_latency_separately() -> None:
+    class TimedRetriever(FixedRetriever):
+        def __init__(self) -> None:
+            super().__init__()
+            self.stage_latency = 4.0
+
+        def search_detailed(self, query: str, *, top_k: int):
+            candidates = self.search(query, top_k=top_k)
+            latency = self.stage_latency
+            self.stage_latency += 2.0
+            return RetrievalExecution(
+                candidates=candidates,
+                stage_latency_ms={"reranker": latency},
+            )
+
+    retriever = TimedRetriever()
+    dataset = EvaluationDataset(
+        dataset_name="two.jsonl",
+        examples=[
+            EvaluationExample(query_id="q1", query="first query", relevant_faq_ids=["faq-1"]),
+            EvaluationExample(query_id="q2", query="second query", relevant_faq_ids=["faq-2"]),
+        ],
+    )
+
+    result = evaluate_retriever(
+        retriever,
+        dataset,
+        corpus_ids={"faq-1", "faq-2"},
+        top_k=5,
+    )
+
+    assert result.reranker_latency is not None
+    assert result.reranker_latency.mean_ms == pytest.approx(5.0)
+    assert result.reranker_latency.p50_ms == pytest.approx(5.0)

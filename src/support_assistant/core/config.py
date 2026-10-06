@@ -20,9 +20,11 @@ class Settings(BaseSettings):
     llm_provider: str = "not-configured"
     llm_model: str = "not-configured"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    reranker_model: str = "not-configured"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
     evaluation_top_k: int = Field(default=5, ge=5)
     embedding_cache_dir: Path = Path("models/cache/embeddings")
     bm25_top_k: int = Field(default=20, ge=1)
     vector_top_k: int = Field(default=20, ge=1)
+    fusion_top_k: int = Field(default=20, ge=1)
+    rrf_k: int = Field(default=60, ge=1)
     rerank_top_k: int = Field(default=5, ge=1)

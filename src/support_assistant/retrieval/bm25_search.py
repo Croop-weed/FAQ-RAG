@@ -60,6 +60,7 @@ class BM25Retriever:
                 document_id=self._documents[index].faq_id,
                 score=float(scores[index]),
                 rank=rank,
+                retrieval_stage=self.name,
             )
             for rank, index in enumerate(indices, start=1)
         ]

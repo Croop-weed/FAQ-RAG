@@ -1,0 +1,53 @@
+{
+  "created_at": "2026-10-06T22:04:35.291031+00:00",
+  "retriever_name": "hybrid_rrf_reranker",
+  "dataset_name": "sample_retrieval.jsonl",
+  "corpus_size": 9,
+  "num_queries": 5,
+  "invalid_records": [],
+  "metrics": {
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0,
+    "recall_at_5": 1.0,
+    "mrr": 1.0,
+    "hit_rate": 1.0,
+    "hit_rate_at_k": 5,
+    "mean_latency_ms": 64.21364160050871,
+    "p50_latency_ms": 63.5146970016649,
+    "p95_latency_ms": 67.69049859867664
+  },
+  "reranker_latency": {
+    "mean_ms": 55.25446460014791,
+    "p50_ms": 55.45176200030255,
+    "p95_ms": 56.86053999961587
+  },
+  "failures": [],
+  "confused_faq_counts": {
+    "sample-faq-007": 3,
+    "sample-faq-008": 3,
+    "sample-faq-006": 3,
+    "sample-faq-009": 3,
+    "sample-faq-005": 2,
+    "sample-faq-003": 2,
+    "sample-faq-002": 2,
+    "sample-faq-004": 1,
+    "sample-faq-001": 1
+  },
+  "configuration": {
+    "bm25_top_k": 20,
+    "vector_top_k": 20,
+    "fusion_top_k": 20,
+    "rrf_k": 60,
+    "output_top_k": 5,
+    "rerank_top_k": 5
+  },
+  "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+  "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L6-v2",
+  "embedding_dimension": 384,
+  "index_type": "faiss.IndexFlatIP",
+  "model_load_time_ms": 8099.889573000837,
+  "reranker_model_load_time_ms": 2775.767324001208,
+  "embedding_build_time_ms": 1.6979949978122022,
+  "index_build_time_ms": 27.34485699693323,
+  "memory_bytes": null
+}
