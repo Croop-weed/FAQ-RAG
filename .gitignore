@@ -5,6 +5,27 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
 
 # Virtual environments
 .venv
+
+# Local configuration and data
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+models/cache/
+data/model_cache/
+**/.cache/
+
+# Editors
+.idea/
+.vscode/
