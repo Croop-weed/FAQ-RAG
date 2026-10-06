@@ -31,3 +31,42 @@ class FAQAlreadyExists(AppException):
 class FAQValidationError(AppException):
     def __init__(self) -> None:
         super().__init__("FAQ record is invalid.", code="faq_validation_error", status_code=422)
+
+
+class GenerationError(AppException):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "generation_error",
+        status_code: int = 502,
+    ) -> None:
+        super().__init__(message, code=code, status_code=status_code)
+
+
+class GenerationConfigurationError(GenerationError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, code="generation_not_configured", status_code=503)
+
+
+class GenerationProviderError(GenerationError):
+    def __init__(self) -> None:
+        super().__init__(
+            "The configured language model provider is unavailable.",
+            code="generation_provider_error",
+            status_code=503,
+        )
+
+
+class GenerationTimeoutError(GenerationError):
+    def __init__(self) -> None:
+        super().__init__(
+            "The language model request timed out.",
+            code="generation_timeout",
+            status_code=504,
+        )
+
+
+class GenerationResponseError(GenerationError):
+    def __init__(self, message: str = "The language model returned an invalid draft.") -> None:
+        super().__init__(message, code="generation_response_error", status_code=502)

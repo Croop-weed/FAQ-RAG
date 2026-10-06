@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./data/support_assistant.db"
     llm_provider: str = "not-configured"
     llm_model: str = "not-configured"
+    ollama_host: str = "http://localhost:11434"
+    llm_timeout_seconds: float = Field(default=45.0, gt=0)
+    generation_evidence_top_k: int = Field(default=5, ge=1, le=10)
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
     evaluation_top_k: int = Field(default=5, ge=5)

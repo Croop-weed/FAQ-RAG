@@ -17,7 +17,7 @@ uv run pytest
 uv run uvicorn support_assistant.main:create_app --factory --reload
 ```
 
-The API is available at `http://127.0.0.1:8000`; the lightweight health check is `GET /health`. `.env` values use the `SUPPORT_ASSISTANT_` prefix and override development defaults. Do not commit `.env` or put secrets in logs.
+The API is available at `http://127.0.0.1:8000`; the lightweight health check is `GET /health`. `.env` values use the `SUPPORT_ASSISTANT_` prefix and override development defaults. Generation is disabled until `SUPPORT_ASSISTANT_LLM_PROVIDER=ollama` and a locally installed `SUPPORT_ASSISTANT_LLM_MODEL` are configured. Do not commit `.env` or put secrets in logs.
 
 Run quality checks with:
 
@@ -29,7 +29,7 @@ uv run mypy src
 
 ## Phase Status
 
-Implemented: application foundation, FAQ persistence/ingestion, BM25 and vector baselines, hybrid RRF, bounded cross-encoder reranking, and retrieval evaluation.
+Implemented: application foundation, FAQ persistence/ingestion, BM25 and vector baselines, hybrid RRF, bounded cross-encoder reranking, retrieval evaluation, and a grounded draft-generation service with validated evidence citations.
 
 Apply the local schema migration before using knowledge-base endpoints:
 
@@ -42,7 +42,9 @@ The sample includes one intentional duplicate. `POST /knowledge-base/faqs/bulk` 
 
 The evaluation JSONL schema and `data/evaluation/sample_retrieval.jsonl` provide labeled query-to-FAQ examples. Its five synthetic queries validate the workflow only and are not representative production data.
 
-Not implemented: LLM generation, grounding, confidence scoring, knowledge-gap detection, automatic abstention, or answer sending. The embedding and reranker models are initial baselines only, not final selections.
+Generation is deliberately unconfigured by default. To use Ollama, set `SUPPORT_ASSISTANT_LLM_PROVIDER=ollama` and `SUPPORT_ASSISTANT_LLM_MODEL` to an installed model. Configure the host, timeout, and evidence top-K with `SUPPORT_ASSISTANT_OLLAMA_HOST`, `SUPPORT_ASSISTANT_LLM_TIMEOUT_SECONDS`, and `SUPPORT_ASSISTANT_GENERATION_EVIDENCE_TOP_K`. No provider or model fallback occurs.
+
+Not implemented: confidence scoring, knowledge-gap detection, automatic abstention decisions, customer sending, or a public draft endpoint. Retrieval/embedding/reranker model names remain initial baselines, not final selections.
 
 Run the app after applying migrations with `uv run uvicorn support_assistant.main:create_app --factory --reload`.
 

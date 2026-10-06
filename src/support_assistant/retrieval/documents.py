@@ -19,6 +19,7 @@ def build_retrieval_documents(faqs: Sequence[FAQRead]) -> list[RetrievalDocument
                 key: value
                 for key, value in {
                     "category": faq.category,
+                    "source": faq.source,
                     "product": faq.product,
                     "version": faq.version,
                     "region": faq.region,
