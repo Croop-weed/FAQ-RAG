@@ -1,6 +1,6 @@
 # Architecture
 
-## Implemented Now: Phases 1-6
+## Implemented Now: Phases 1-7
 
 - `core.config.Settings` owns typed application settings. Environment variables prefixed with `SUPPORT_ASSISTANT_` override development defaults; a local `.env` is read through `pydantic-settings`.
 - `main.create_app()` is the application factory. It receives settings and an optional LLM provider, configures logging, mounts routers, and registers API exception handlers. No model is created at import time.
@@ -30,6 +30,11 @@
 - `EvidenceItem` preserves the exact FAQ question/answer, source metadata, FAQ ID, reranker rank/stage/score, and retrieval trace metadata supplied to the model. Retrieval/reranker values remain ranking metadata, never confidence.
 - The model returns answer text plus FAQ IDs only. The application rejects duplicate/unknown cited IDs and constructs `DraftCitation` values from the exact supplied evidence; it never accepts model-authored source labels. The draft also records all supplied evidence IDs/content, provider/model, latency, usage when present, evidence count, and prompt version.
 - Prompt content explicitly treats query/evidence as data, asks for evidence-grounded facts and concise support prose, forbids unsupported claims and fabricated inline citations, and asks the model to state when supplied evidence is insufficient. This is an instruction, not an implemented confidence or abstention decision.
+- `ConfidenceAssessment` domain model establishes a three-state decision hierarchy (`ACCEPT`, `REVIEW`, `ABSTAIN`). `ACCEPT` means safe to present as an agent draft; `REVIEW` indicates borderline evidence support requiring verification; `ABSTAIN` indicates insufficient evidence or unsupported claims.
+- `HeuristicEvidenceSupportEvaluator` implements the pluggable `EvidenceSupportEvaluator` protocol to evaluate sentence-level answer grounding against evidence content, verify citation validity, and detect unsupported claims.
+- `KnowledgeGapService` inspects the query, retrieved reranked evidence, and draft text to identify knowledge gaps (empty evidence, low reranker score below threshold, unmatched query terms, or draft refusal phrases) without executing retrieval or calling LLMs directly.
+- `ConfidenceService` derives explainable confidence scores from measurable signals (reranker scores, candidate score margin, support score, citation validity, and knowledge gap checks). It NEVER uses LLM self-reported confidence.
+- `Phase7DraftService` orchestrates the end-to-end pipeline from query retrieval through grounded generation and confidence evaluation, returning structured abstention results (`answer: None`, reason, citations, metadata) whenever evidence is insufficient.
 
 ## Retrieval-to-Draft Flow
 
@@ -44,18 +49,24 @@ flowchart LR
 	V --> F
 	F --> R[Cross-encoder reranker]
 	R --> G[Grounded generation]
-	G --> O[Response]
+	G --> D[Draft + Citations]
+	D --> S[EvidenceSupportEvaluator]
+	S --> C[ConfidenceService]
+	C --> K[KnowledgeGapService]
+	K --> O[Decision: ACCEPT / REVIEW / ABSTAIN]
 ```
 
-RRF, reranking, and grounded generation are implemented as injectable services. Confidence evaluation, knowledge-gap detection, calibrated abstention policy, human workflow, and customer sending remain future work. No generation or retrieval HTTP endpoint has been added.
+RRF, reranking, grounded generation, evidence support evaluation, knowledge-gap detection, and confidence scoring are implemented as injectable services. Human review workflow, public endpoint wiring, and customer sending remain future work. No generation or retrieval HTTP endpoint has been added.
 
 ## Swappable Components
 
 - `generation.providers.LLMProvider` returns a typed `GenerationResult`; Ollama is isolated behind the contract and other providers can be added without changing the generation service.
+- `generation.grounding.EvidenceSupportEvaluator` provides a narrow evaluation contract; `HeuristicEvidenceSupportEvaluator` can be replaced with an NLI model or LLM judge.
+- `services.knowledge_gap_service.KnowledgeGapService` isolates knowledge-gap rules from confidence logic and LLM providers.
 - `retrieval.embeddings.EmbeddingProvider` separates document and query embedding operations from any concrete embedding model.
 - `retrieval.bm25_search.LexicalRetriever` and `retrieval.vector_search.VectorRetriever` return common `RetrievalCandidate` values. The semantic text adapter owns query embedding while the FAISS index accepts vectors, keeping model selection separate from index storage.
 - `retrieval.reranker.Reranker` receives the query, a bounded candidate sequence, and a FAQ-ID-to-document mapping; it has no database or HTTP dependency.
-- `Settings` centralizes provider, model, top-K, and RRF rank-constant selections. Baseline model settings can be replaced without changing fusion, evaluation, or business logic.
+- `Settings` centralizes provider, model, top-K, threshold, and RRF rank-constant selections. Baseline model settings can be replaced without changing fusion, evaluation, or business logic.
 
 Implementations can therefore change through configuration and dependency injection without changing evaluation logic or route handlers. Contracts are intentionally narrow.
 
@@ -87,4 +98,10 @@ Set `SUPPORT_ASSISTANT_LLM_PROVIDER=ollama` and `SUPPORT_ASSISTANT_LLM_MODEL=<in
 
 Only the final configured reranked FAQ set (default five) is sent. The prompt separates the JSON-encoded customer question from the JSON-encoded FAQ evidence, treats both as untrusted content, and requests a structured answer plus cited FAQ IDs. The application validates citations against supplied IDs and constructs source references from the evidence objects. A citation documents which FAQ was supplied/selected; it does not prove the answer is correct.
 
-Generation failures, timeout, malformed output, and unknown citations use safe application errors. Logs record provider/model, evidence/citation counts, latency, and error category/type, not customer text, prompt text, answers, or provider payloads. Confidence scoring, calibrated abstention, knowledge-gap logic, and answer sending remain deferred to Phase 7 or later.
+Generation failures, timeout, malformed output, and unknown citations use safe application errors. Logs record provider/model, evidence/citation counts, latency, and error category/type, not customer text, prompt text, answers, or provider payloads.
+
+## Phase 7 Confidence & Abstention Policy
+
+Phase 7 introduces a production-oriented confidence and knowledge-gap evaluation layer. When retrieved evidence is insufficient, weak, or unsupported by knowledge base records, the system explicitly abstains (`decision: ABSTAIN`, `answer: None`) with explainable human-readable reasons rather than presenting ungrounded answers.
+
+Confidence scores are derived from measurable signals available in the application (top reranker score, score margin, citation validity, evidence support score, knowledge gap flags) and NEVER from LLM self-reported confidence. Thresholds (`confidence_accept_threshold`, `confidence_review_threshold`, `min_evidence_reranker_score`, `knowledge_gap_threshold`) are typed and configurable via `Settings`. The heuristic confidence calculation is provisional and documented as requiring empirical calibration against golden evaluation sets.

@@ -16,7 +16,8 @@ This README is the starting map for developers and coding agents. It describes c
 | 4 | Hybrid retrieval | Implemented: rank-only Reciprocal Rank Fusion and `HybridRetriever` |
 | 5 | Cross-encoder reranking | Implemented: bounded reranker protocol/adapter and benchmark mode |
 | 6 | Grounded generation and evidence | Implemented as callable internal services/schemas with an Ollama adapter; **not wired into the app or exposed through an API route** |
-| Later | Confidence, knowledge-gap policy, calibrated abstention, agent workflow, and production hardening | Not implemented; similarly named service files are empty placeholders |
+| 7 | Confidence, knowledge gap & abstention | Implemented: `ConfidenceService`, `KnowledgeGapService`, `EvidenceSupportEvaluator`, `Phase7DraftService`, typed decisions (`ACCEPT`, `REVIEW`, `ABSTAIN`), and structured abstention |
+| Later | Agent workflow, public draft API endpoints, and production hardening | Not implemented |
 
 “Implemented” describes code and tests in this repository, not production readiness. In particular, the current evaluation set is synthetic and small, and the LLM provider defaults to disabled.
 
@@ -47,11 +48,15 @@ Customer query                                                    active FAQ cor
                                 |
                    final reranked FAQ IDs
                                 |
-              RetrievalGenerationService (callable, not app-wired)
+                  Phase7DraftService (callable pipeline)
                                 |
                  configured LLMProvider, if enabled
                                 |
                    GroundedDraft + citations
+                                |
+                 EvidenceSupportEvaluator -> KnowledgeGapService -> ConfidenceService
+                                |
+                  Decision: ACCEPT / REVIEW / ABSTAIN (or structured abstention answer=null)
                                 |
                        Human review/send
 ```
@@ -67,7 +72,8 @@ Retrieval can be run independently from generation. Generation receives only the
 │   └── evaluation/                           # five synthetic labeled queries and saved benchmark JSON
 ├── docs/
 │   ├── architecture.md
-│   └── decisions/                            # ADRs 0001-0006
+│   └── decisions/                            # ADRs 0001-0007
+
 ├── migrations/                               # Alembic environment and initial FAQ migration
 ├── scripts/
 │   ├── ingest_faqs.py                        # thin FAQ ingestion CLI wrapper
@@ -550,7 +556,7 @@ The repo does not currently expose a draft HTTP endpoint or compose retrieval/ge
 - There is no public retrieval or draft API, and `create_app` does not instantiate retrieval models or compose generation. Current production API routes are health and FAQ knowledge-base operations only.
 - LLM generation has an Ollama adapter and unit/fake-client tests but no live-server integration test. Provider is `not-configured` by default; a model must be installed/configured externally.
 - The prompt requests evidence-grounded output, but does not technically guarantee entailment. Citation-ID validity does not verify that each sentence is supported by its cited FAQ.
-- Confidence calibration, grounding/entailment evaluation, knowledge-gap classification, and automatic abstention are not implemented. Empty/insufficient evidence policy belongs to future work.
+- Phase 7 implements `ConfidenceService`, `KnowledgeGapService`, `EvidenceSupportEvaluator`, and `Phase7DraftService` with structured abstention decisions (`ACCEPT`, `REVIEW`, `ABSTAIN`). Empirical calibration of heuristic confidence scores against larger human-labeled golden evaluation datasets remains ongoing work.
 - `observability/metrics.py` is empty: there is no runtime metrics exporter. Retrieval metrics are offline benchmark calculations.
 - Draft persistence and agent review/send workflow are not implemented. No customer message is sent by this code.
 - The five-query evaluation data is synthetic, and current perfect stored scores are not meaningful production-quality evidence. Build a human-reviewed golden set before choosing final models or claims.

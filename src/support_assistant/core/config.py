@@ -31,3 +31,8 @@ class Settings(BaseSettings):
     fusion_top_k: int = Field(default=20, ge=1)
     rrf_k: int = Field(default=60, ge=1)
     rerank_top_k: int = Field(default=5, ge=1)
+    confidence_accept_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    confidence_review_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
+    min_evidence_reranker_score: float = Field(default=0.30)
+    min_supporting_evidence_count: int = Field(default=1, ge=1)
+    knowledge_gap_threshold: float = Field(default=0.25)
