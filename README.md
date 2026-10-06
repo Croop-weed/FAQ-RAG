@@ -29,7 +29,7 @@ uv run mypy src
 
 ## Phase Status
 
-Implemented: configuration, structured logging, request correlation, FastAPI app factory, centralized API errors, provider/retriever contracts, FAQ persistence, knowledge-base API, JSON/JSONL ingestion, and typed retrieval-evaluation examples.
+Implemented: configuration, structured logging, request correlation, FastAPI app factory, FAQ persistence and ingestion, independent BM25/vector retrieval baselines, and retrieval evaluation.
 
 Apply the local schema migration before using knowledge-base endpoints:
 
@@ -42,6 +42,17 @@ The sample includes one intentional duplicate. `POST /knowledge-base/faqs/bulk` 
 
 The evaluation JSONL schema and `data/evaluation/sample_retrieval.jsonl` establish labeled query-to-FAQ examples for later Recall@K, Precision@K, MRR, hit-rate, reranker, and abstention evaluation. They do not calculate metrics.
 
-Not implemented: chunking, lexical or vector search, embeddings, fusion, reranking, model clients, prompts, grounded generation, confidence scoring, or answer generation. Model/provider settings remain placeholders; no model has been selected or loaded.
+Not implemented: hybrid fusion, reranking, generation, grounding, confidence scoring, automatic abstention, or answer generation. The embedding model below is an initial baseline only, not a final selection.
 
 Run the app after applying migrations with `uv run uvicorn support_assistant.main:create_app --factory --reload`.
+
+## Retrieval Baseline
+
+After applying migrations and loading the sample corpus, run either independent baseline:
+
+```bash
+uv run python scripts/evaluate_retrieval.py --dataset data/evaluation/sample_retrieval.jsonl --retriever bm25 --output /tmp/bm25.json
+uv run python scripts/evaluate_retrieval.py --dataset data/evaluation/sample_retrieval.jsonl --retriever vector --output /tmp/vector.json
+```
+
+The vector baseline defaults to `sentence-transformers/all-MiniLM-L6-v2`. Model loading is explicit and may download weights the first time; subsequent runs use the local model and document-embedding caches. Override the model with `--model` or `SUPPORT_ASSISTANT_EMBEDDING_MODEL`. The demo evaluation file has only five synthetic queries and is for pipeline verification, not meaningful model selection.

@@ -2,13 +2,13 @@ import asyncio
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from support_assistant.db.models import Base
 from support_assistant.db.repositories.faq_repository import SqlAlchemyFAQRepository
 from support_assistant.ingestion.pipeline import FAQIngestionPipeline
 from support_assistant.ingestion.validation import normalize_faq_record
 from support_assistant.schemas.faq import FAQCreate, FAQStatus
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 def test_faq_schema_requires_nonempty_question_and_answer() -> None:
