@@ -1,0 +1,5 @@
+{"query":"I forgot my password and cannot sign in","relevant_faq_ids":["sample-faq-001"],"category":"account access","product":"Orbit Desk","version":"2.x","difficulty":"easy","notes":"Direct paraphrase of password reset FAQ."}
+{"query":"Who is allowed to download a billing invoice?","relevant_faq_ids":["sample-faq-003"],"category":"billing","product":"Orbit Desk","version":"2.x","difficulty":"medium"}
+{"query":"How long can our administrators review audit history?","relevant_faq_ids":["sample-faq-006"],"category":"security","product":"Orbit Desk","version":"2.x","difficulty":"medium"}
+{"query":"Can an accidentally removed task be recovered?","relevant_faq_ids":["sample-faq-008"],"category":"projects","product":"Orbit Desk","version":"2.x","difficulty":"medium"}
+{"query":"Where are Slack alerts configured?","relevant_faq_ids":["sample-faq-009"],"category":"integrations","product":"Orbit Desk","version":"2.x","difficulty":"hard","notes":"Requires matching the notification/integration concepts."}

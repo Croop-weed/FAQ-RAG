@@ -27,7 +27,7 @@ def configure_logging(settings: Settings) -> None:
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.__stderr__),
         wrapper_class=structlog.make_filtering_bound_logger(level),
         cache_logger_on_first_use=True,
     )

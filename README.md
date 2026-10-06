@@ -27,8 +27,21 @@ uv run ruff format --check .
 uv run mypy src
 ```
 
-## Phase 1 Status
+## Phase Status
 
-Implemented: configuration, structured logging, request correlation, FastAPI app factory, health endpoint, centralized API errors, provider/retriever contracts, and foundation tests.
+Implemented: configuration, structured logging, request correlation, FastAPI app factory, centralized API errors, provider/retriever contracts, FAQ persistence, knowledge-base API, JSON/JSONL ingestion, and typed retrieval-evaluation examples.
 
-Not implemented: persistence, FAQ ingestion, chunking, lexical or vector search, fusion, reranking, model clients, prompts, and grounded generation. Model/provider settings are placeholders; no model has been selected or loaded.
+Apply the local schema migration before using knowledge-base endpoints:
+
+```bash
+uv run alembic upgrade head
+uv run python scripts/ingest_faqs.py data/raw/sample_faqs.jsonl
+```
+
+The sample includes one intentional duplicate. `POST /knowledge-base/faqs/bulk` accepts JSON records (up to 1,000 per call) and reports partial validation failures. The CLI supports UTF-8 JSON arrays and JSONL; malformed JSONL records are reported without aborting valid records. Duplicate identity uses normalized question, product, and version; valid duplicates count as accepted and are separately reported.
+
+The evaluation JSONL schema and `data/evaluation/sample_retrieval.jsonl` establish labeled query-to-FAQ examples for later Recall@K, Precision@K, MRR, hit-rate, reranker, and abstention evaluation. They do not calculate metrics.
+
+Not implemented: chunking, lexical or vector search, embeddings, fusion, reranking, model clients, prompts, grounded generation, confidence scoring, or answer generation. Model/provider settings remain placeholders; no model has been selected or loaded.
+
+Run the app after applying migrations with `uv run uvicorn support_assistant.main:create_app --factory --reload`.
