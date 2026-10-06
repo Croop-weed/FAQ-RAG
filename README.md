@@ -209,6 +209,49 @@ The committed `sample_retrieval.jsonl` has five synthetic queries and the sample
 
 A citation provides traceability to evidence supplied/selected. It does not prove entailment or correctness. Generation/provider errors use safe `GenerationError` subclasses and the existing API handler envelope, but no generation endpoint currently exposes them. Logs include provider/model/evidence count/latency/outcome category, not query, prompt, answer, or raw provider payload.
 
+## Confidence, Knowledge-Gap Detection & Abstention
+
+Phase 7 introduces a production-oriented confidence assessment and knowledge-gap evaluation layer that inspects query, retrieved evidence, and generated draft text to determine whether knowledge base support is sufficient.
+
+### Design Principles and Decision Hierarchy
+
+- **No LLM Self-Reported Confidence**: Confidence is derived strictly from measurable application-level signals (cross-encoder reranker score, score margin between candidates, citation validity ratio, evidence support score, and knowledge-gap checks). It NEVER asks the LLM "how confident are you?".
+- **Three-State Decision Model**:
+  - `ACCEPT`: Strong reranked evidence and verified support; safe to present as an agent draft.
+  - `REVIEW`: Evidence is relevant but support is uncertain or score margin is narrow; requires human verification.
+  - `ABSTAIN`: Insufficient supporting evidence, low reranker scores, or unsupported claims; the system explicitly abstains rather than returning an ungrounded answer.
+- **Human Review Mandatory**: Even `ACCEPT` indicates safety for internal draft presentation, NOT automatic sending to customers.
+
+### Key Components
+
+- `generation/grounding.py`: Defines the `EvidenceSupportEvaluator` protocol and `HeuristicEvidenceSupportEvaluator` implementation. Evaluates sentence-level token overlap between answer claims and evidence text, checks citation validity, and identifies unsupported claims.
+- `services/knowledge_gap_service.py`: `KnowledgeGapService` inspects the query, evidence, and optional draft for knowledge gaps (empty evidence, low reranker score below threshold, unmatched query terms, draft refusal phrases) without executing retrieval or calling LLMs directly.
+- `services/confidence_service.py`: `ConfidenceService` computes explainable confidence scores from measurable signals and applies decision boundaries (`ACCEPT`, `REVIEW`, `ABSTAIN`).
+- `services/draft_service.py`: `Phase7DraftService` orchestrates the complete end-to-end pipeline from query retrieval through reranking, generation, grounding, and confidence scoring.
+
+### Structured Abstention Result
+
+When evidence is insufficient, `Phase7DraftService` returns a structured abstention result with `answer: None`:
+
+```json
+{
+    "decision": "ABSTAIN",
+    "confidence": 0.15,
+    "answer": null,
+    "reason": "Abstained: Knowledge gap detected - Top reranked evidence score (0.15) is below knowledge-gap threshold (0.25).",
+    "citations": [...]
+}
+```
+
+### Configurable Thresholds
+
+Settings in `core/config.py`:
+- `confidence_accept_threshold` (default `0.75`)
+- `confidence_review_threshold` (default `0.45`)
+- `min_evidence_reranker_score` (default `0.30`)
+- `min_supporting_evidence_count` (default `1`)
+- `knowledge_gap_threshold` (default `0.25`)
+
 ## Module Reference
 
 This table covers architectural modules. Empty files and intentionally unfinished boundaries are called out explicitly; do not infer implementation from their names.
@@ -221,15 +264,16 @@ This table covers architectural modules. Empty files and intentionally unfinishe
 | `src/support_assistant/api/routes/health.py` | `GET /health`; process liveness only. |
 | `src/support_assistant/api/routes/knowledge_base.py` | FAQ create/bulk/list/get/patch HTTP adapter. Keep it thin and delegate to `KnowledgeBaseService`. |
 | `src/support_assistant/api/routes/drafts.py` | Empty placeholder; no draft HTTP endpoint. |
-| `src/support_assistant/core/config.py` | `Settings`, typed defaults and `SUPPORT_ASSISTANT_` environment loading. Add configuration here rather than scattering model/top-K literals. |
+| `src/support_assistant/core/config.py` | `Settings`, typed defaults and `SUPPORT_ASSISTANT_` environment loading, including Phase 7 confidence and knowledge gap thresholds. |
 | `src/support_assistant/core/logging.py` | `configure_logging(Settings)` configures structured JSON logs, environment and request context. Avoid logging customer content/secrets. |
 | `src/support_assistant/core/exceptions.py` | `AppException`, FAQ errors, and `GenerationError` subclasses/status codes. API responses are mapped centrally. |
 | `src/support_assistant/db/models.py` | SQLAlchemy `Base` and `FAQModel`; single FAQ row and indexes. Do not add embeddings/reranker results here. |
 | `src/support_assistant/db/session.py` | `Database` owns async engine/session factory; `session()` provides transaction lifecycle, `dispose()` closes engine. |
 | `src/support_assistant/db/repositories/faq_repository.py` | `FAQRepository` protocol and `SqlAlchemyFAQRepository`; persistence only, no rank/search logic. `draft_repository.py` is empty. |
 | `src/support_assistant/services/knowledge_base_service.py` | `KnowledgeBaseService` applies FAQ rules and coordinates `FAQRepository`/`FAQIngestionPipeline`. |
-| `src/support_assistant/services/draft_service.py` | Empty placeholder; generation currently lives in `generation/service.py`. |
-| `src/support_assistant/services/confidence_service.py`, `knowledge_gap_service.py` | Empty placeholders; no confidence or knowledge-gap behavior. |
+| `src/support_assistant/services/draft_service.py` | `Phase7DraftService` end-to-end pipeline service orchestrating retrieval, cross-encoder reranking, grounded LLM generation, evidence support evaluation, knowledge-gap detection, and confidence scoring. |
+| `src/support_assistant/services/confidence_service.py` | `ConfidenceService` and `create_confidence_service`; derives explainable confidence scores from measurable signals and decides `ACCEPT`, `REVIEW`, or `ABSTAIN`. |
+| `src/support_assistant/services/knowledge_gap_service.py` | `KnowledgeGapService` and `create_knowledge_gap_service`; inspects query, evidence, and draft to detect knowledge gaps without calling LLMs directly. |
 | `src/support_assistant/ingestion/loaders.py` | `load_faq_records(Path)` for JSON array/JSONL; typed `LoadedFAQRecords`/`FAQLoadError`. |
 | `src/support_assistant/ingestion/validation.py` | `_normalize_content` and `normalize_faq_record`; explicit validation issues. |
 | `src/support_assistant/ingestion/pipeline.py` | `FAQIngestionPipeline.ingest`; validate batch, dedupe, query repository identities, bulk create. |
@@ -247,17 +291,19 @@ This table covers architectural modules. Empty files and intentionally unfinishe
 | `src/support_assistant/retrieval/metrics.py` | `compute_retrieval_metrics`; offline Recall/MRR/Hit Rate/latency calculations. |
 | `src/support_assistant/retrieval/benchmark.py` | `load_active_corpus`, `run_benchmark`, `export_result`; database repository to generic evaluator boundary. |
 | `src/support_assistant/retrieval/exceptions.py` | Retrieval, embedding, dataset, reranking failures. |
-| `src/support_assistant/generation/providers.py` | `LLMProvider`, `GenerationResult`, `TokenUsage`, Ollama protocol adapter, `create_llm_provider`. Add providers here/alongside it without coupling services to SDKs. |
+| `src/support_assistant/generation/providers.py` | `LLMProvider`, `GenerationResult`, `TokenUsage`, Ollama protocol adapter, `create_llm_provider`. |
 | `src/support_assistant/generation/prompts.py` | `PROMPT_VERSION` and `build_grounded_prompt`; prompt construction only. |
-| `src/support_assistant/generation/service.py` | `GenerationService`, `RetrievalGenerationService`, `RerankedRetriever` protocol, and their explicit settings-based factories. Internal service only; not API-wired. |
-| `src/support_assistant/generation/grounding.py` | Empty placeholder; current citation-ID validation is in `GenerationService`, not a grounding/entailment evaluator. |
+| `src/support_assistant/generation/service.py` | `GenerationService`, `RetrievalGenerationService`, `RerankedRetriever` protocol, and explicit settings-based factories. |
+| `src/support_assistant/generation/grounding.py` | `EvidenceSupportEvaluator` protocol and `HeuristicEvidenceSupportEvaluator`; sentence-level grounding, citation validity, and unsupported claims detection. |
+| `src/support_assistant/schemas/confidence.py` | `ConfidenceDecision`, `ConfidenceAssessment`, `EvidenceSupportResult`, `KnowledgeGapAssessment`, `EvaluatedGroundedDraft`. |
 | `src/support_assistant/schemas/faq.py` | Pydantic FAQ create/update/read/list/ingestion types and identity helpers. |
-| `src/support_assistant/schemas/retrieval.py` | `RetrievalDocument`, `RetrievalCandidate`, `RetrievalResult`, `RetrievalExecution`. Shared cross-component retrieval contracts. |
+| `src/support_assistant/schemas/retrieval.py` | `RetrievalDocument`, `RetrievalCandidate`, `RetrievalResult`, `RetrievalExecution`. Shared retrieval contracts. |
 | `src/support_assistant/schemas/evaluation.py` | Evaluation examples/datasets/diagnostics, metrics, failures, latency and benchmark result models. |
 | `src/support_assistant/schemas/draft.py` | `EvidenceItem`, `DraftCitation`, `GeneratedDraftContent`, `GenerationMetadata`, `GroundedDraft`. |
 | `src/support_assistant/schemas/health.py`, `errors.py` | Typed health and standard API error envelopes. |
 | `src/support_assistant/schemas/query.py` | Empty placeholder; evaluation examples currently live in `schemas/evaluation.py`. |
 | `src/support_assistant/observability/metrics.py` | Empty placeholder; no runtime metrics exporter/instrumentation. Benchmark metrics are `retrieval/metrics.py`. |
+
 | `src/support_assistant/api/routes/drafts.py` | Empty placeholder; no public generation API. |
 
 ## Key Contracts And Classes
@@ -277,6 +323,10 @@ This table covers architectural modules. Empty files and intentionally unfinishe
 | `CrossEncoderRerankingRetriever` | Hybrid pool reranking | query → final candidates plus detailed reranker timing | evaluation CLI and `RetrievalGenerationService` |
 | `GenerationService` | Grounded model draft and citation validation | query + evidence → `GroundedDraft` | callable directly or through `RetrievalGenerationService`; not app-wired |
 | `RetrievalGenerationService` | Small retrieval-to-draft composition | query → reranked candidates → evidence → draft | constructed explicitly with retriever/documents/settings; no current endpoint |
+| `EvidenceSupportEvaluator` | Answer grounding & citation validity evaluator | query + answer + evidence + cited_ids → `EvidenceSupportResult` | `ConfidenceService`; pluggable contract for future NLI or LLM judge verifiers |
+| `KnowledgeGapService` | Knowledge sufficiency & gap detection | query + evidence + optional draft → `KnowledgeGapAssessment` | `ConfidenceService` and pipeline pre/post generation abstention checks |
+| `ConfidenceService` | Multi-signal confidence calculation and decision policy | query + draft + evidence → `ConfidenceAssessment` | `Phase7DraftService`; applies `ACCEPT`, `REVIEW`, or `ABSTAIN` decision boundaries |
+| `Phase7DraftService` | End-to-end retrieval, reranking, generation, grounding, & confidence pipeline | query → `EvaluatedGroundedDraft` | Primary Phase 7 pipeline; returns structured abstention (`answer: None`) when evidence is insufficient |
 
 `RetrievalCandidate.score` is a stage-specific ranking value. BM25, cosine, RRF and cross-encoder values have different meanings/scales; none is a probability or confidence. Do not combine them numerically without a separately designed and evaluated method.
 
