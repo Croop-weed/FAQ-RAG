@@ -96,6 +96,24 @@ class Phase7DraftService:
                         retrieval_metadata=candidate.metadata,
                     )
                 )
+            elif candidate.metadata and candidate.metadata.get("question") and candidate.metadata.get("answer"):
+                evidence.append(
+                    EvidenceItem(
+                        faq_id=candidate.faq_id,
+                        question=candidate.metadata["question"],
+                        answer=candidate.metadata["answer"],
+                        source=candidate.metadata.get("source"),
+                        category=candidate.metadata.get("category"),
+                        product=candidate.metadata.get("product"),
+                        version=candidate.metadata.get("version"),
+                        tags=candidate.metadata.get("tags", []),
+                        retrieval_rank=candidate.rank,
+                        retrieval_score=candidate.score,
+                        retrieval_stage=candidate.retrieval_stage,
+                        retrieval_metadata=candidate.metadata,
+                    )
+                )
+
 
         # 3. Pre-generation Knowledge Gap Check
         kg_assessment = self.confidence_service.knowledge_gap_service.evaluate_knowledge_gap(

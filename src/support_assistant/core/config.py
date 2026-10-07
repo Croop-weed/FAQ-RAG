@@ -17,12 +17,23 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "staging", "production"] = "development"
     log_level: str = "INFO"
     database_url: str = "sqlite+aiosqlite:///./data/support_assistant.db"
+
+    # Hugging Face Configuration
+    hf_api_key: str = ""
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
     llm_provider: str = "not-configured"
     llm_model: str = "not-configured"
+
+
+    # Azure AI Search Configuration
+    azure_search_endpoint: str = ""
+    azure_search_api_key: str = ""
+    azure_search_index: str = "faq-index"
+
+    # Legacy & Runtime Parameters
     ollama_host: str = "http://localhost:11434"
-    llm_timeout_seconds: float = Field(default=45.0, gt=0)
+    llm_timeout_seconds: float = Field(default=60.0, gt=0)
     generation_evidence_top_k: int = Field(default=5, ge=1, le=10)
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
     evaluation_top_k: int = Field(default=5, ge=5)
     embedding_cache_dir: Path = Path("models/cache/embeddings")
@@ -36,3 +47,4 @@ class Settings(BaseSettings):
     min_evidence_reranker_score: float = Field(default=0.30)
     min_supporting_evidence_count: int = Field(default=1, ge=1)
     knowledge_gap_threshold: float = Field(default=0.25)
+

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from support_assistant.api.errors import register_exception_handlers
+from support_assistant.api.routes.drafts import router as drafts_router
 from support_assistant.api.routes.health import router as health_router
 from support_assistant.api.routes.knowledge_base import router as knowledge_base_router
 from support_assistant.core.config import Settings
@@ -84,5 +85,7 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health_router)
     app.include_router(knowledge_base_router)
+    app.include_router(drafts_router)
     register_exception_handlers(app)
     return app
+

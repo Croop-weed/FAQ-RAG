@@ -601,7 +601,91 @@ The repo does not currently expose a draft HTTP endpoint or compose retrieval/ge
 14. Keep `docs/architecture.md` and the numbered ADRs aligned with real behavior; clearly mark unfinished placeholders.
 15. Do not add frameworks or distributed services without a concrete requirement.
 
+## Azure AI Search + Hugging Face Setup
+
+This repository supports an end-to-end production RAG pipeline backed by **Azure AI Search** for hybrid retrieval/ranking and **Hugging Face** for embeddings (`BAAI/bge-small-en-v1.5`) and LLM generation (`Qwen/Qwen3-8B`).
+
+Follow these steps to configure and run the pipeline:
+
+### 1. Create Azure AI Search Resource
+Create an Azure AI Search service in the Azure Portal or via Azure CLI.
+
+### 2. Obtain Search Endpoint
+Copy your Azure AI Search URL (e.g. `https://<YOUR-SEARCH-SERVICE>.search.windows.net`).
+
+### 3. Obtain API Key
+Obtain an admin key or query key from your Azure AI Search resource settings.
+
+### 4. Create Hugging Face Access Token
+Create a Hugging Face account and generate an API User Access Token (`hf_...`) with read access to inference endpoints.
+
+### 5. Configure `.env`
+Copy `.env.example` to `.env` and fill in your credentials:
+
+```env
+SUPPORT_ASSISTANT_HF_API_KEY=hf_xxxxxxxxxxxxxxxxxxxxxxxxx
+SUPPORT_ASSISTANT_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+SUPPORT_ASSISTANT_LLM_PROVIDER=huggingface
+SUPPORT_ASSISTANT_LLM_MODEL=Qwen/Qwen3-8B
+
+SUPPORT_ASSISTANT_AZURE_SEARCH_ENDPOINT=https://<YOUR-SEARCH-SERVICE>.search.windows.net
+SUPPORT_ASSISTANT_AZURE_SEARCH_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
+SUPPORT_ASSISTANT_AZURE_SEARCH_INDEX=faq-index
+```
+
+### 6. Install Dependencies
+Install all required dependencies using `uv`:
+
+```bash
+uv sync
+```
+
+### 7. Run Azure Search Index Setup
+Create or update the Azure AI Search index schema (384-dimensional vector field + HNSW profile):
+
+```bash
+python scripts/setup_azure_search.py
+```
+
+### 8. Sync FAQs to Azure Search
+Synchronize active database FAQs into Azure AI Search using Hugging Face embeddings:
+
+```bash
+python scripts/sync_faqs_to_azure_search.py
+```
+
+### 9. Test Hugging Face Integration
+Verify Hugging Face BGE embeddings (384-dim) and Qwen3-8B generation:
+
+```bash
+python scripts/test_huggingface.py
+```
+
+### 10. Test Azure Search Integration
+Verify Azure AI Search connectivity and hybrid search execution:
+
+```bash
+python scripts/test_azure_search.py
+```
+
+### 11. Run End-to-End Pipeline Verification
+Execute full end-to-end query processing (Retrieval → Generation → Phase 7 Evaluation):
+
+```bash
+python scripts/test_e2e_pipeline.py
+```
+
+### 12. Run the Application
+Start the FastAPI server:
+
+```bash
+uv run uvicorn support_assistant.main:create_app --factory --reload
+```
+
+---
+
 ## Limitations And Deferred Work
+
 
 - There is no public retrieval or draft API, and `create_app` does not instantiate retrieval models or compose generation. Current production API routes are health and FAQ knowledge-base operations only.
 - LLM generation has an Ollama adapter and unit/fake-client tests but no live-server integration test. Provider is `not-configured` by default; a model must be installed/configured externally.

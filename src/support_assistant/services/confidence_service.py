@@ -30,6 +30,20 @@ def _normalize_reranker_score(score: float) -> float:
     return 1.0 / (1.0 + math.exp(-score))
 
 
+def _get_effective_retrieval_score(item: EvidenceItem) -> float:
+
+    stage = getattr(item, "retrieval_stage", "")
+    score = item.retrieval_score
+
+    if stage == "azure-ai-search-hybrid":
+        rank = getattr(item, "retrieval_rank", 1)
+        # RRF score decay adapter: rank 1 -> 1.0, rank 2 -> 0.9, rank 3 -> 0.8, etc.
+        return max(0.1, min(1.0, 1.0 - (rank - 1) * 0.1))
+
+
+    return _normalize_reranker_score(score)
+
+
 class ConfidenceService:
     """Production confidence service evaluating draft support and knowledge-gap decisions.
 
@@ -100,15 +114,21 @@ class ConfidenceService:
             cited_faq_ids=[c.faq_id for c in draft.citations],
         )
 
-        # Step 3: Extract measurable signals
+        # Step 3: Extract measurable signals via retrieval score adapter
+        effective_scores = [_get_effective_retrieval_score(item) for item in evidence]
+        top_effective = effective_scores[0] if effective_scores else 0.0
+        second_effective = effective_scores[1] if len(effective_scores) > 1 else 0.0
         top_score = evidence[0].retrieval_score if evidence else 0.0
         second_score = evidence[1].retrieval_score if len(evidence) > 1 else 0.0
-        score_margin = max(0.0, top_score - second_score)
+
+        is_azure = any(getattr(item, "retrieval_stage", "") == "azure-ai-search-hybrid" for item in evidence)
+        raw_threshold = 0.50 if is_azure else self.min_evidence_reranker_score
         strong_evidence_count = sum(
-            1 for item in evidence if item.retrieval_score >= self.min_evidence_reranker_score
+            1 for item in evidence if item.retrieval_score >= raw_threshold or _get_effective_retrieval_score(item) >= 0.50
         )
 
-        reranker_signal = _normalize_reranker_score(top_score)
+        score_margin = max(0.0, top_effective - second_effective)
+        reranker_signal = top_effective
         margin_signal = min(1.0, score_margin / 0.5)
         citation_signal = support_result.citation_validity
         support_signal = support_result.support_score
@@ -124,8 +144,8 @@ class ConfidenceService:
 
         # Collect weak evidence / risk indicators
         weak_indicators: list[str] = []
-        if top_score < self.min_evidence_reranker_score:
-            weak_indicators.append(f"Top reranker score ({top_score:.2f}) below threshold.")
+        if top_effective < 0.30:
+            weak_indicators.append(f"Top effective retrieval score ({top_effective:.2f}) below threshold.")
         if support_result.unsupported_claims:
             weak_indicators.append(
                 f"Draft contains {len(support_result.unsupported_claims)} unsupported claim(s)."
@@ -136,10 +156,13 @@ class ConfidenceService:
             weak_indicators.append("Narrow score margin between top retrieval candidates.")
 
         # Step 5: Decision Boundaries
+        min_top_signal = 0.30 if is_azure else self.min_evidence_reranker_score
+        current_top_check = top_effective if is_azure else top_score
+
         if (
             len(support_result.unsupported_claims) > 0
             or support_signal < 0.40
-            or top_score < self.min_evidence_reranker_score
+            or current_top_check < min_top_signal
             or confidence_score < self.review_threshold
             or citation_signal < 1.0
         ):
@@ -152,6 +175,7 @@ class ConfidenceService:
                     else support_result.explanation
                 )
             )
+
         elif (
             confidence_score >= self.accept_threshold
             and support_signal >= 0.75
@@ -175,6 +199,7 @@ class ConfidenceService:
             "top_reranker_score": top_score,
             "second_reranker_score": second_score,
             "score_margin": score_margin,
+
             "reranker_signal": reranker_signal,
             "support_signal": support_signal,
             "citation_signal": citation_signal,

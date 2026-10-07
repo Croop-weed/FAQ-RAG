@@ -85,23 +85,37 @@ class KnowledgeGapService:
                 confidence_cap=0.0,
             )
 
+        stage = getattr(evidence[0], "retrieval_stage", "")
         top_score = evidence[0].retrieval_score
-        if top_score < self.knowledge_gap_threshold:
+        is_azure = stage == "azure-ai-search-hybrid"
+
+
+        effective_top_score = (
+            max(0.1, min(1.0, 1.0 - (getattr(evidence[0], "retrieval_rank", 1) - 1) * 0.1))
+            if is_azure
+            else top_score
+        )
+
+        threshold = 0.20 if is_azure else self.knowledge_gap_threshold
+
+        if effective_top_score < threshold:
             logger.info(
                 "knowledge_gap_detected",
                 reason="low_reranker_score",
                 top_score=top_score,
-                threshold=self.knowledge_gap_threshold,
+                effective_top_score=effective_top_score,
+                threshold=threshold,
             )
             return KnowledgeGapAssessment(
                 is_gap=True,
                 reason=(
-                    f"Top reranked evidence score ({top_score:.3f}) is below "
-                    f"knowledge-gap threshold ({self.knowledge_gap_threshold:.3f})."
+                    f"Top retrieval evidence score ({top_score:.3f}) is below "
+                    f"knowledge-gap threshold ({threshold:.3f})."
                 ),
                 gap_type="low_reranker_score",
                 confidence_cap=0.20,
             )
+
 
         # Token overlap check with top evidence
         query_tokens = _tokenize(query)
